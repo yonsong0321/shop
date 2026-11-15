@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>LOOKBOOK</title>
+<script src="https://js.tosspayments.com/v2/standard"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-width: 1024px;
+    background: #fafafa;
+    color: #222;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 40px;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .brand {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    cursor: pointer;
+    color: #111;
+  }
+  nav { display: flex; gap: 28px; }
+  nav button {
+    background: none;
+    border: none;
+    font-size: 15px;
+    color: #555;
+    cursor: pointer;
+    padding: 6px 0;
+    border-bottom: 2px solid transparent;
+  }
+  nav button.active {
+    color: #111;
+    font-weight: 700;
+    border-bottom-color: #111;
+  }
+  .cart-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #111;
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .cart-badge {
+    background: #ff5a5f;
+    color: #fff;
+    border-radius: 10px;
+    font-size: 11px;
+    min-width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+  }
+  main {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 32px 40px 80px;
+  }
+
+  /* --- 상품 목록 --- */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+  .card:hover {
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    transform: translateY(-3px);
+  }
+  .thumb { width: 100%; height: 180px; display: flex; align-items: center; justify-content: center; }
+  .card-info { padding: 14px 16px; }
+  .card-name { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+  .card-price { font-size: 14px; color: #555; margin: 0; }
+
+  /* --- 상품 상세 --- */
+  .detail { display: flex; gap: 48px; }
+  .detail-image { width: 420px; height: 420px; border-radius: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .detail-info { flex: 1; padding-top: 8px; }
+  .detail-info h1 { font-size: 26px; margin: 0 0 10px; }
+  .detail-price { font-size: 20px; font-weight: 700; margin: 0 0 20px; }
+  .detail-desc { color: #555; line-height: 1.6; margin: 0 0 28px; }
+  .option-group { margin-bottom: 22px; }
+  .option-label { font-size: 13px; font-weight: 700; color: #777; margin-bottom: 8px; display: block; letter-spacing: 1px; }
+  .option-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .option-pill {
+    border: 1px solid #ccc;
+    background: #fff;
+    border-radius: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .option-pill.selected { border-color: #111; background: #111; color: #fff; }
+  .qty-row { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+  .qty-btn {
+    width: 32px; height: 32px; border: 1px solid #ccc; background: #fff; border-radius: 6px;
+    cursor: pointer; font-size: 16px; line-height: 1;
+  }
+  .qty-value { font-size: 16px; min-width: 24px; text-align: center; }
+  .primary-btn {
+    background: #111; color: #fff; border: none; border-radius: 8px;
+    padding: 14px 28px; font-size: 15px; cursor: pointer;
+  }
+  .primary-btn:disabled { background: #ccc; cursor: not-allowed; }
+  .link-btn {
+    background: none; border: none; color: #777; font-size: 14px; cursor: pointer;
+    text-decoration: underline; padding: 0; margin-bottom: 20px; display: inline-block;
+  }
+
+  /* --- 장바구니 --- */
+  .cart-list { display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px; }
+  .cart-item {
+    display: flex; align-items: center; gap: 20px;
+    background: #fff; border: 1px solid #eee; border-radius: 12px; padding: 16px 20px;
+  }
+  .cart-thumb { width: 72px; height: 72px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .cart-item-info { flex: 1; }
+  .cart-item-name { font-weight: 600; margin: 0 0 4px; }
+  .cart-item-opt { font-size: 13px; color: #888; margin: 0; }
+  .cart-item-qty { display: flex; align-items: center; gap: 8px; }
+  .cart-item-subtotal { width: 100px; text-align: right; font-weight: 700; }
+  .cart-remove { background: none; border: none; color: #aaa; font-size: 20px; cursor: pointer; padding: 0 4px; }
+  .cart-remove:hover { color: #ff5a5f; }
+  .cart-summary {
+    display: flex; justify-content: flex-end; align-items: center; gap: 24px;
+    border-top: 2px solid #111; padding-top: 20px;
+  }
+  .cart-total { font-size: 20px; font-weight: 800; }
+  .empty-cart { text-align: center; padding: 80px 0; color: #888; }
+
+  /* --- 결제 결과 --- */
+  .pay-result { max-width: 560px; margin: 60px auto; text-align: center; }
+  .pay-result-icon { font-size: 48px; margin-bottom: 16px; }
+  .pay-result h1 { font-size: 22px; margin: 0 0 16px; }
+  .pay-result-note { color: #777; line-height: 1.6; margin: 0 0 28px; font-size: 14px; }
+  .pay-result-box {
+    background: #fff; border: 1px solid #eee; border-radius: 12px;
+    padding: 20px 24px; text-align: left; margin-bottom: 28px;
+  }
+  .pay-result-box p { margin: 6px 0; font-size: 14px; color: #333; word-break: break-all; }
+  .pay-result-box strong { display: inline-block; width: 90px; color: #888; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand" id="brandLogo">LOOKBOOK</div>
+  <nav id="categoryNav"></nav>
+  <button class="cart-btn" id="cartBtn">
+    🛒 장바구니 <span class="cart-badge" id="cartBadge">0</span>
+  </button>
+</header>
+
+<main id="main"></main>
+
+<script>
+/* ---------------- 결제 설정 ---------------- */
+// 토스페이먼츠 개발자센터(https://developers.tosspayments.com)에서 발급받은
+// 테스트 클라이언트 키(test_gck_... 또는 test_ck_...)로 교체해야 결제창이 열립니다.
+const TOSS_CLIENT_KEY = 'test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm';
+const tossPayments = window.TossPayments ? TossPayments(TOSS_CLIENT_KEY) : null;
+
+/* ---------------- Mock 데이터 ---------------- */
+const CATEGORIES = ['전체', '상의', '하의', '아우터', '신발'];
+const SIZES = ['S', 'M', 'L', 'XL'];
+
+const PRODUCTS = [
+  { id: 1, name: '베이직 코튼 티셔츠', price: 19000, category: '상의', desc: '부드러운 코튼 소재의 데일리 반팔 티셔츠입니다.', colors: ['화이트', '블랙', '그레이'], shape: 'tshirt', color: '#f1f1f1' },
+  { id: 2, name: '오버핏 스트라이프 셔츠', price: 39000, category: '상의', desc: '여유로운 핏의 스트라이프 패턴 셔츠입니다.', colors: ['블루', '화이트'], shape: 'shirt', color: '#cfe0f3' },
+  { id: 3, name: '크루넥 니트', price: 45000, category: '상의', desc: '따뜻하고 포근한 크루넥 니트 스웨터입니다.', colors: ['베이지', '브라운', '네이비'], shape: 'knit', color: '#e8d9c3' },
+  { id: 4, name: '카라 피케 티셔츠', price: 29000, category: '상의', desc: '클래식한 카라 디자인의 피케 소재 티셔츠입니다.', colors: ['네이비', '화이트', '레드'], shape: 'polo', color: '#dbe7dc' },
+  { id: 5, name: '후드 스웨트셔츠', price: 42000, category: '상의', desc: '캐주얼한 무드의 기본 후드 티입니다.', colors: ['그레이', '블랙'], shape: 'hoodie', color: '#d9d9d9' },
+  { id: 6, name: '슬림 스트레이트 데님', price: 49000, category: '하의', desc: '슬림한 핏의 스트레이트 데님 팬츠입니다.', colors: ['인디고', '블랙'], shape: 'jeans', color: '#5b7aa5' },
+  { id: 7, name: '와이드 치노 팬츠', price: 39000, category: '하의', desc: '편안한 와이드 핏의 치노 팬츠입니다.', colors: ['카키', '베이지', '블랙'], shape: 'pants', color: '#cdbd98' },
+  { id: 8, name: '코듀로이 팬츠', price: 44000, category: '하의', desc: '부드러운 코듀로이 소재의 팬츠입니다.', colors: ['브라운', '그린'], shape: 'pants', color: '#b08d63' },
+  { id: 9, name: '조거 스웨트팬츠', price: 35000, category: '하의', desc: '활동성이 좋은 조거핏 스웨트팬츠입니다.', colors: ['그레이', '블랙', '네이비'], shape: 'jogger', color: '#c9c9c9' },
+  { id: 10, name: '플리츠 미디 스커트', price: 37000, category: '하의', desc: '여성스러운 플리츠 디테일의 미디 스커트입니다.', colors: ['블랙', '베이지'], shape: 'skirt', color: '#dcdcdc' },
+  { id: 11, name: '울 블렌드 코트', price: 129000, category: '아우터', desc: '고급스러운 울 혼방 소재의 롱 코트입니다.', colors: ['캐멀', '블랙', '그레이'], shape: 'coat', color: '#c9a876' },
+  { id: 12, name: '퀄팅 패딩 재킷', price: 89000, category: '아우터', desc: '가볍고 따뜻한 퀄팅 패딩 재킷입니다.', colors: ['블랙', '네이비'], shape: 'jacket', color: '#333a44' },
+  { id: 13, name: '데님 자켓', price: 59000, category: '아우터', desc: '빈티지한 느낌의 데님 재킷입니다.', colors: ['라이트블루', '인디고'], shape: 'jacket', color: '#8fa9c7' },
+  { id: 14, name: '바람막이 윈드브레이커', price: 49000, category: '아우터', desc: '가볍게 걸치기 좋은 윈드브레이커입니다.', colors: ['블랙', '옐로우'], shape: 'windbreaker', color: '#2c2c2c' },
+  { id: 15, name: '트위드 자켓', price: 99000, category: '아우터', desc: '클래식한 분위기의 트위드 재킷입니다.', colors: ['핑크', '베이지'], shape: 'jacket', color: '#e3c9c9' },
+  { id: 16, name: '캔버스 스니커즈', price: 55000, category: '신발', desc: '어디에나 매치하기 좋은 캔버스 스니커즈입니다.', colors: ['화이트', '블랙'], shape: 'sneaker', color: '#f0f0f0' },
+  { id: 17, name: '러닝화', price: 79000, category: '신발', desc: '가볍고 편안한 쿠셔닝의 러닝화입니다.', colors: ['그레이', '블루'], shape: 'runner', color: '#9fb3c8' },
+  { id: 18, name: '첼시 부츠', price: 98000, category: '신발', desc: '세련된 실루엣의 첼시 부츠입니다.', colors: ['블랙', '브라운'], shape: 'boot', color: '#3a2e28' },
+  { id: 19, name: '로퍼', price: 69000, category: '신발', desc: '클래식한 디자인의 캐주얼 로퍼입니다.', colors: ['브라운', '블랙'], shape: 'loafer', color: '#5c4433' },
+  { id: 20, name: '샌들', price: 32000, category: '신발', desc: '시원한 여름을 위한 스트랩 샌들입니다.', colors: ['베이지', '블랙'], shape: 'sandal', color: '#d8c6a8' },
+];
+
+/* ---------------- 상태 ---------------- */
+let state = { view: 'list', category: '전체', productId: null };
+let selection = { size: null, color: null, qty: 1 };
+let cart = loadCart();
+
+function loadCart() {
+  try {
+    const raw = localStorage.getItem('lookbook_cart');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+function saveCart() {
+  localStorage.setItem('lookbook_cart', JSON.stringify(cart));
+}
+function cartTotalQty() {
+  return cart.reduce((sum, item) => sum + item.qty, 0);
+}
+function cartTotalPrice() {
+  return cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+}
+function formatPrice(n) {
+  return n.toLocaleString('ko-KR') + '원';
+}
+
+/* ---------------- 플레이스홀더 이미지(SVG) ---------------- */
+function placeholderSVG(shape, color, size) {
+  const shapes = {
+    tshirt: 'M20,15 L40,5 L60,5 L80,15 L75,35 L62,28 L62,90 L38,90 L38,28 L25,35 Z',
+    shirt: 'M18,18 L40,6 L60,6 L82,18 L76,38 L62,30 L62,90 L38,90 L38,30 L24,38 Z',
+    knit: 'M22,20 L40,8 L60,8 L78,20 L72,36 L62,30 L62,92 L38,92 L38,30 L28,36 Z',
+    polo: 'M22,16 L40,6 L48,14 L52,14 L60,6 L78,16 L72,36 L62,28 L62,90 L38,90 L38,28 L28,36 Z',
+    hoodie: 'M20,22 Q50,2 80,22 L74,38 L62,30 L62,92 L38,92 L38,30 L26,38 Z',
+    jeans: 'M30,6 L70,6 L72,92 L55,92 L50,40 L45,92 L28,92 Z',
+    pants: 'M28,6 L72,6 L74,92 L56,92 L50,42 L44,92 L26,92 Z',
+    jogger: 'M30,6 L70,6 L68,70 L58,92 L50,55 L42,92 L32,70 Z',
+    skirt: 'M30,10 L70,10 L80,88 L20,88 Z',
+    coat: 'M16,20 L40,4 L60,4 L84,20 L78,42 L62,32 L62,94 L38,94 L38,32 L22,42 Z',
+    jacket: 'M18,18 L40,6 L60,6 L82,18 L76,40 L62,30 L62,92 L38,92 L38,30 L24,40 Z',
+    windbreaker: 'M18,20 Q50,0 82,20 L76,40 L62,30 L62,92 L38,92 L38,30 L24,40 Z',
+    sneaker: 'M10,70 Q20,50 45,48 Q60,40 80,46 L90,66 Q90,78 80,78 L14,78 Q8,76 10,70 Z',
+    runner: 'M8,68 Q25,46 50,46 Q66,38 88,48 L92,66 Q92,78 80,78 L12,78 Q6,76 8,68 Z',
+    boot: 'M30,10 L62,10 L64,55 L92,68 Q94,80 80,80 L28,80 Q22,78 24,68 L30,55 Z',
+    loafer: 'M12,62 Q25,48 50,50 Q65,44 88,54 L90,68 Q88,78 76,78 L18,78 Q10,74 12,62 Z',
+    sandal: 'M14,72 L86,72 L86,80 L14,80 Z M20,72 L20,40 L30,40 L30,72 Z M50,72 L50,36 L60,36 L60,72 Z M76,72 L76,40 L82,40 L82,72 Z',
+  };
+  const path = shapes[shape] || shapes.tshirt;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#f4f4f4"/>
+    <path d="${path}" fill="${color}" stroke="#999" stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+/* ---------------- 렌더링 ---------------- */
+const main = document.getElementById('main');
+const categoryNav = document.getElementById('categoryNav');
+const cartBadge = document.getElementById('cartBadge');
+
+function renderHeader() {
+  categoryNav.innerHTML = CATEGORIES.map(cat =>
+    `<button class="${state.view === 'list' && state.category === cat ? 'active' : ''}" data-cat="${cat}">${cat}</button>`
+  ).join('');
+  categoryNav.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.view = 'list';
+      state.category = btn.dataset.cat;
+      render();
+    });
+  });
+  cartBadge.textContent = cartTotalQty();
+}
+
+function render() {
+  renderHeader();
+  if (state.view === 'list') renderList();
+  else if (state.view === 'detail') renderDetail();
+  else if (state.view === 'cart') renderCart();
+  else if (state.view === 'paymentResult') renderPaymentResult();
+}
+
+function renderList() {
+  const items = state.category === '전체'
+    ? PRODUCTS
+    : PRODUCTS.filter(p => p.category === state.category);
+
+  main.innerHTML = `
+    <div class="grid">
+      ${items.map(p => `
+        <div class="card" data-id="${p.id}">
+          <div class="thumb" style="background:${p.color}22">${placeholderSVG(p.shape, p.color, 120)}</div>
+          <div class="card-info">
+            <p class="card-name">${p.name}</p>
+            <p class="card-price">${formatPrice(p.price)}</p>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  main.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', () => {
+      state.view = 'detail';
+      state.productId = Number(card.dataset.id);
+      selection = { size: null, color: null, qty: 1 };
+      render();
+    });
+  });
+}
+
+function renderDetail() {
+  const p = PRODUCTS.find(x => x.id === state.productId);
+  main.innerHTML = `
+    <button class="link-btn" id="backToList">← 목록으로</button>
+    <div class="detail">
+      <div class="detail-image" style="background:${p.color}22">${placeholderSVG(p.shape, p.color, 280)}</div>
+      <div class="detail-info">
+        <h1>${p.name}</h1>
+        <p class="detail-price">${formatPrice(p.price)}</p>
+        <p class="detail-desc">${p.desc}</p>
+
+        <div class="option-group">
+          <span class="option-label">사이즈</span>
+          <div class="option-row" id="sizeRow">
+            ${SIZES.map(s => `<button class="option-pill ${selection.size === s ? 'selected' : ''}" data-size="${s}">${s}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="option-group">
+          <span class="option-label">색상</span>
+          <div class="option-row" id="colorRow">
+            ${p.colors.map(c => `<button class="option-pill ${selection.color === c ? 'selected' : ''}" data-color="${c}">${c}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="qty-row">
+          <span class="option-label" style="margin-bottom:0">수량</span>
+          <button class="qty-btn" id="qtyMinus">−</button>
+          <span class="qty-value" id="qtyValue">${selection.qty}</span>
+          <button class="qty-btn" id="qtyPlus">+</button>
+        </div>
+
+        <button class="primary-btn" id="addToCartBtn" ${selection.size && selection.color ? '' : 'disabled'}>
+          장바구니에 담기
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backToList').addEventListener('click', () => {
+    state.view = 'list';
+    render();
+  });
+  main.querySelectorAll('#sizeRow button').forEach(btn => {
+    btn.addEventListener('click', () => { selection.size = btn.dataset.size; renderDetail(); });
+  });
+  main.querySelectorAll('#colorRow button').forEach(btn => {
+    btn.addEventListener('click', () => { selection.color = btn.dataset.color; renderDetail(); });
+  });
+  document.getElementById('qtyMinus').addEventListener('click', () => {
+    selection.qty = Math.max(1, selection.qty - 1);
+    renderDetail();
+  });
+  document.getElementById('qtyPlus').addEventListener('click', () => {
+    selection.qty += 1;
+    renderDetail();
+  });
+  document.getElementById('addToCartBtn').addEventListener('click', () => {
+    if (!selection.size || !selection.color) return;
+    addToCart(p, selection.size, selection.color, selection.qty);
+    renderHeader();
+  });
+}
+
+function addToCart(p, size, color, qty) {
+  const existing = cart.find(item => item.productId === p.id && item.size === size && item.color === color);
+  if (existing) {
+    existing.qty += qty;
+  } else {
+    cart.push({
+      productId: p.id, name: p.name, price: p.price,
+      shape: p.shape, colorHex: p.color,
+      size, color, qty,
+    });
+  }
+  saveCart();
+}
+
+function renderCart() {
+  if (cart.length === 0) {
+    main.innerHTML = `
+      <div class="empty-cart">
+        <p>장바구니가 비었습니다.</p>
+        <button class="primary-btn" id="goShopping">쇼핑 계속하기</button>
+      </div>
+    `;
+    document.getElementById('goShopping').addEventListener('click', () => {
+      state.view = 'list';
+      render();
+    });
+    return;
+  }
+
+  main.innerHTML = `
+    <div class="cart-list">
+      ${cart.map((item, idx) => `
+        <div class="cart-item" data-idx="${idx}">
+          <div class="cart-thumb" style="background:${item.colorHex}22">${placeholderSVG(item.shape, item.colorHex, 60)}</div>
+          <div class="cart-item-info">
+            <p class="cart-item-name">${item.name}</p>
+            <p class="cart-item-opt">${item.size} / ${item.color}</p>
+          </div>
+          <div class="cart-item-qty">
+            <button class="qty-btn cart-qty-minus">−</button>
+            <span class="qty-value">${item.qty}</span>
+            <button class="qty-btn cart-qty-plus">+</button>
+          </div>
+          <div class="cart-item-subtotal">${formatPrice(item.price * item.qty)}</div>
+          <button class="cart-remove" title="삭제">✕</button>
+        </div>
+      `).join('')}
+    </div>
+    <div class="cart-summary">
+      <span class="cart-total">총 합계 ${formatPrice(cartTotalPrice())}</span>
+      <button class="primary-btn" id="checkoutBtn">결제하기</button>
+    </div>
+  `;
+
+  main.querySelectorAll('.cart-item').forEach(row => {
+    const idx = Number(row.dataset.idx);
+    row.querySelector('.cart-qty-minus').addEventListener('click', () => {
+      cart[idx].qty = Math.max(1, cart[idx].qty - 1);
+      saveCart();
+      render();
+    });
+    row.querySelector('.cart-qty-plus').addEventListener('click', () => {
+      cart[idx].qty += 1;
+      saveCart();
+      render();
+    });
+    row.querySelector('.cart-remove').addEventListener('click', () => {
+      cart.splice(idx, 1);
+      saveCart();
+      render();
+    });
+  });
+
+  document.getElementById('checkoutBtn').addEventListener('click', startCheckout);
+}
+
+/* ---------------- 결제 ---------------- */
+function getCustomerKey() {
+  let key = localStorage.getItem('lookbook_customer_key');
+  if (!key) {
+    key = 'cust_' + Array.from({ length: 24 }, () => Math.random().toString(36)[2] || '0').join('');
+    localStorage.setItem('lookbook_customer_key', key);
+  }
+  return key;
+}
+
+function startCheckout() {
+  if (!tossPayments) {
+    alert('결제 모듈을 불러오지 못했습니다. 인터넷 연결을 확인해주세요.');
+    return;
+  }
+  if (cart.length === 0) return;
+
+  const amount = cartTotalPrice();
+  const orderId = 'lookbook_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const orderName = cart.length === 1 ? cart[0].name : `${cart[0].name} 외 ${cart.length - 1}건`;
+
+  localStorage.setItem('lookbook_pending_order', JSON.stringify({ orderId, amount, orderName, items: cart }));
+
+  const payment = tossPayments.payment({ customerKey: getCustomerKey() });
+  payment.requestPayment({
+    method: 'CARD',
+    amount: { currency: 'KRW', value: amount },
+    orderId,
+    orderName,
+    successUrl: window.location.origin + window.location.pathname,
+    failUrl: window.location.origin + window.location.pathname,
+    card: { useEscrow: false, flowMode: 'DEFAULT', useCardPoint: false, useAppCardOnly: false },
+  }).catch(err => {
+    if (err && err.code === 'USER_CANCEL') return;
+    alert('결제 요청 중 오류가 발생했습니다: ' + (err && (err.message || err.code)));
+  });
+}
+
+let paymentResult = null;
+
+function handlePaymentRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const paymentKey = params.get('paymentKey');
+  const code = params.get('code');
+  if (!paymentKey && !code) return;
+
+  const pendingRaw = localStorage.getItem('lookbook_pending_order');
+  const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
+
+  if (paymentKey) {
+    const amount = params.get('amount');
+    const amountMismatch = pending && Number(amount) !== pending.amount;
+    paymentResult = {
+      status: 'success',
+      paymentKey,
+      orderId: params.get('orderId'),
+      amount,
+      amountMismatch,
+      pending,
+    };
+    cart = [];
+    saveCart();
+  } else {
+    paymentResult = {
+      status: 'fail',
+      code,
+      message: params.get('message'),
+      pending,
+    };
+  }
+  localStorage.removeItem('lookbook_pending_order');
+  state.view = 'paymentResult';
+  window.history.replaceState({}, '', window.location.pathname);
+}
+
+function renderPaymentResult() {
+  const r = paymentResult;
+  const isSuccess = r.status === 'success';
+  main.innerHTML = `
+    <div class="pay-result">
+      <div class="pay-result-icon">${isSuccess ? '✅' : '❌'}</div>
+      <h1>${isSuccess ? '결제창 처리가 완료되었습니다' : '결제가 완료되지 않았습니다'}</h1>
+      <p class="pay-result-note">
+        ${isSuccess
+          ? '이 데모는 토스페이먼츠 결제창 호출까지만 연동되어 있으며, 서버에서 처리해야 하는 결제 승인(confirm) 단계는 생략되어 실제 결제가 확정되지는 않습니다.'
+          : `결제가 취소되었거나 실패했습니다. ${r.message ? '(' + r.message + ')' : ''}`}
+      </p>
+      ${isSuccess ? `
+        <div class="pay-result-box">
+          <p><strong>주문번호</strong> ${r.orderId || '-'}</p>
+          <p><strong>결제금액</strong> ${formatPrice(Number(r.amount || 0))}</p>
+          <p><strong>paymentKey</strong> ${r.paymentKey || '-'}</p>
+        </div>
+        ${r.amountMismatch ? `
+          <p class="pay-result-note" style="color:#ff5a5f;">⚠ 결제 요청 금액과 리다이렉트로 전달된 금액이 일치하지 않습니다. 실제 서비스에서는 이 경우 결제를 취소 처리해야 합니다.</p>
+        ` : ''}
+      ` : ''}
+      <button class="primary-btn" id="payResultBack">쇼핑 계속하기</button>
+    </div>
+  `;
+  document.getElementById('payResultBack').addEventListener('click', () => {
+    state.view = 'list';
+    state.category = '전체';
+    render();
+  });
+}
+
+/* ---------------- 전역 이벤트 ---------------- */
+document.getElementById('brandLogo').addEventListener('click', () => {
+  state.view = 'list';
+  state.category = '전체';
+  render();
+});
+document.getElementById('cartBtn').addEventListener('click', () => {
+  state.view = 'cart';
+  render();
+});
+
+handlePaymentRedirect();
+render();
+</script>
+</body>
+</html>

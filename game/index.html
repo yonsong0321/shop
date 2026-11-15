@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>물풍선 생존</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1d1d26; color: #eee; font-family: sans-serif; }
+  #hud { width: 632px; display: flex; justify-content: space-between; font-size: 24px; font-weight: bold; margin-bottom: 8px; }
+  canvas { border: 4px solid #333; display: block; }
+</style>
+</head>
+<body>
+<div id="hud"><span>남은 시간</span><span id="time">02:00</span></div>
+<canvas id="game" width="624" height="528"></canvas>
+<script>
+const TILE = 48;
+const COLS = 13;
+const ROWS = 11;
+const EMPTY = 0, WALL = 1, BLOCK = 2;
+const PLAYER_HALF = 16;
+const PLAYER_SPEED = 144;
+const BOT_SPEED = 126;
+const BOT_THINK_INTERVAL = 0.22;
+const BOT_RESPAWN_DELAY = 3;
+const BLOCK_RATIO = 0.65;
+const MAX_BOMBS = 1;
+const BOMB_TIME = 3;
+const EXPLOSION_TIME = 0.5;
+const RANGE = 1;
+const SURVIVE_TIME = 120;
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const timeEl = document.getElementById('time');
+const W = canvas.width, H = canvas.height;
+
+let state, grid, bombs, explosions, player, bot, timeLeft;
+const keys = {};
+
+// --- SVG 캐릭터 (크레이지 아케이드 스타일: 동글동글한 몸통 + 더듬이 머리) ---
+function characterSVG(bodyColor, hairColor, cheekColor) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+    <circle cx="26" cy="10" r="4" fill="${hairColor}"/>
+    <ellipse cx="32" cy="38" rx="23" ry="21" fill="${bodyColor}" stroke="#2b2b2b" stroke-width="2.2"/>
+    <path d="M12 32 Q9 18 22 14 Q19 24 25 28 Z" fill="${hairColor}" stroke="#2b2b2b" stroke-width="1.5"/>
+    <path d="M52 32 Q55 18 42 14 Q45 24 39 28 Z" fill="${hairColor}" stroke="#2b2b2b" stroke-width="1.5"/>
+    <circle cx="22" cy="36" r="8.5" fill="#ffffff" stroke="#2b2b2b" stroke-width="1.5"/>
+    <circle cx="42" cy="36" r="8.5" fill="#ffffff" stroke="#2b2b2b" stroke-width="1.5"/>
+    <circle cx="24.5" cy="38" r="4.2" fill="#1b1b1b"/>
+    <circle cx="44.5" cy="38" r="4.2" fill="#1b1b1b"/>
+    <circle cx="22.5" cy="35.5" r="1.6" fill="#ffffff"/>
+    <circle cx="42.5" cy="35.5" r="1.6" fill="#ffffff"/>
+    <circle cx="14" cy="44" r="3.6" fill="${cheekColor}" opacity="0.85"/>
+    <circle cx="50" cy="44" r="3.6" fill="${cheekColor}" opacity="0.85"/>
+    <path d="M25 48 Q32 53 39 48" stroke="#2b2b2b" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    <ellipse cx="18" cy="57" rx="6.5" ry="4.2" fill="#2b2b2b"/>
+    <ellipse cx="46" cy="57" rx="6.5" ry="4.2" fill="#2b2b2b"/>
+  </svg>`;
+}
+
+function svgDataUrl(svg) {
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+const playerImg = new Image();
+const botImg = new Image();
+playerImg.src = svgDataUrl(characterSVG('#ffe066', '#ff9f1c', '#ff9aa6'));
+botImg.src = svgDataUrl(characterSVG('#9b5de5', '#4c2889', '#ffb3d9'));
+
+function createGrid() {
+  const g = [];
+  for (let r = 0; r < ROWS; r++) {
+    g.push([]);
+    for (let c = 0; c < COLS; c++) {
+      const border = r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1;
+      const pillar = r % 2 === 0 && c % 2 === 0;
+      g[r].push(border || pillar ? WALL : EMPTY);
+    }
+  }
+  const botR = ROWS - 2, botC = COLS - 2;
+  const safeCells = new Set([
+    '1,1', '1,2', '2,1',
+    `${botR},${botC}`, `${botR},${botC - 1}`, `${botR - 1},${botC}`,
+  ]);
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (g[r][c] === EMPTY && !safeCells.has(`${r},${c}`) && Math.random() < BLOCK_RATIO) g[r][c] = BLOCK;
+    }
+  }
+  return g;
+}
+
+function newRound() {
+  grid = createGrid();
+  bombs = [];
+  explosions = [];
+  player = { x: 1.5 * TILE, y: 1.5 * TILE, facing: 1, moving: false, bobPhase: 0 };
+  bot = {
+    x: (COLS - 1.5) * TILE, y: (ROWS - 1.5) * TILE,
+    facing: -1, moving: false, bobPhase: 0,
+    dir: [0, 0], think: 0, bombCooldown: 1 + Math.random() * 2,
+    alive: true, respawnTimer: 0,
+  };
+  timeLeft = SURVIVE_TIME;
+}
+
+function respawnBot() {
+  const pc = Math.floor(player.x / TILE), pr = Math.floor(player.y / TILE);
+  const candidates = [];
+  for (let r = 1; r < ROWS - 1; r++) {
+    for (let c = 1; c < COLS - 1; c++) {
+      if (grid[r][c] !== EMPTY) continue;
+      if (bombs.some(b => b.c === c && b.r === r)) continue;
+      if (Math.abs(c - pc) + Math.abs(r - pr) < 3) continue;
+      candidates.push({ c, r });
+    }
+  }
+  const spot = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : { c: COLS - 2, r: ROWS - 2 };
+  bot.x = (spot.c + 0.5) * TILE;
+  bot.y = (spot.r + 0.5) * TILE;
+  bot.alive = true;
+  bot.dir = [0, 0];
+  bot.bombCooldown = 1 + Math.random() * 2;
+}
+
+function isSolidForMover(c, r, moverId) {
+  if (r < 0 || c < 0 || r >= ROWS || c >= COLS) return true;
+  if (grid[r][c] !== EMPTY) return true;
+  return bombs.some(b => b.c === c && b.r === r && (b.placer !== moverId || b.solidForPlacer));
+}
+
+function passable(c, r, moverId) {
+  return !isSolidForMover(c, r, moverId);
+}
+
+function collidesFor(x, y, moverId) {
+  const c0 = Math.floor((x - PLAYER_HALF) / TILE);
+  const c1 = Math.floor((x + PLAYER_HALF - 0.01) / TILE);
+  const r0 = Math.floor((y - PLAYER_HALF) / TILE);
+  const r1 = Math.floor((y + PLAYER_HALF - 0.01) / TILE);
+  for (let r = r0; r <= r1; r++)
+    for (let c = c0; c <= c1; c++)
+      if (isSolidForMover(c, r, moverId)) return true;
+  return false;
+}
+
+function tryMoveEntity(entity, moverId, mx, my) {
+  const nx = entity.x + mx, ny = entity.y + my;
+  if (collidesFor(nx, ny, moverId)) return false;
+  entity.x = nx;
+  entity.y = ny;
+  return true;
+}
+
+function alignPerpendicularEntity(entity, moverId, axis, dist) {
+  const v = axis === 'x' ? entity.x : entity.y;
+  const diff = (Math.floor(v / TILE) + 0.5) * TILE - v;
+  if (Math.abs(diff) < 0.5) return;
+  const step = Math.sign(diff) * Math.min(Math.abs(diff), dist);
+  if (axis === 'x') tryMoveEntity(entity, moverId, step, 0);
+  else tryMoveEntity(entity, moverId, 0, step);
+}
+
+function moveEntityDir(entity, moverId, dx, dy, dist) {
+  if (dx && !tryMoveEntity(entity, moverId, dx * dist, 0)) alignPerpendicularEntity(entity, moverId, 'y', dist);
+  if (dy && !tryMoveEntity(entity, moverId, 0, dy * dist)) alignPerpendicularEntity(entity, moverId, 'x', dist);
+}
+
+function movePlayer(dt) {
+  const dx = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0);
+  const dy = (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0);
+  const dist = PLAYER_SPEED * dt * (dx && dy ? Math.SQRT1_2 : 1);
+  player.moving = !!(dx || dy);
+  if (dx) player.facing = dx;
+  if (player.moving) player.bobPhase += dt;
+  moveEntityDir(player, 'player', dx, dy, dist);
+}
+
+function tileKey(c, r) { return `${r},${c}`; }
+
+function computeDangerCells() {
+  const danger = new Set();
+  for (const e of explosions) for (const cell of e.cells) danger.add(tileKey(cell.c, cell.r));
+  for (const b of bombs) {
+    danger.add(tileKey(b.c, b.r));
+    for (const [dc, dr] of DIRS) {
+      for (let i = 1; i <= RANGE; i++) {
+        const c = b.c + dc * i, r = b.r + dr * i;
+        if (r < 0 || c < 0 || r >= ROWS || c >= COLS) break;
+        if (grid[r][c] === WALL) break;
+        danger.add(tileKey(c, r));
+        if (grid[r][c] === BLOCK) break;
+      }
+    }
+  }
+  return danger;
+}
+
+function bestEscapeDir(startC, startR, danger) {
+  const visited = new Set([tileKey(startC, startR)]);
+  let frontier = DIRS.map(([dc, dr]) => ({ c: startC + dc, r: startR + dr, dir: [dc, dr] }))
+    .filter(n => passable(n.c, n.r, 'bot'));
+  for (const n of frontier) visited.add(tileKey(n.c, n.r));
+  for (let depth = 0; depth < 6 && frontier.length; depth++) {
+    const safe = frontier.find(n => !danger.has(tileKey(n.c, n.r)));
+    if (safe) return safe.dir;
+    const next = [];
+    for (const n of frontier) {
+      for (const [dc, dr] of DIRS) {
+        const c = n.c + dc, r = n.r + dr;
+        const key = tileKey(c, r);
+        if (visited.has(key) || !passable(c, r, 'bot')) continue;
+        visited.add(key);
+        next.push({ c, r, dir: n.dir });
+      }
+    }
+    frontier = next;
+  }
+  const fallback = DIRS.map(([dc, dr]) => ({ c: startC + dc, r: startR + dr, dir: [dc, dr] }))
+    .find(n => passable(n.c, n.r, 'bot'));
+  return fallback ? fallback.dir : null;
+}
+
+function chaseDir(startC, startR, danger) {
+  const targetC = Math.floor(player.x / TILE), targetR = Math.floor(player.y / TILE);
+  const options = DIRS
+    .map(([dc, dr]) => ({ c: startC + dc, r: startR + dr, dir: [dc, dr] }))
+    .filter(n => passable(n.c, n.r, 'bot') && !danger.has(tileKey(n.c, n.r)));
+  if (!options.length) return null;
+  options.sort((a, b) =>
+    (Math.abs(a.c - targetC) + Math.abs(a.r - targetR)) -
+    (Math.abs(b.c - targetC) + Math.abs(b.r - targetR)));
+  return Math.random() < 0.7 ? options[0].dir : options[Math.floor(Math.random() * options.length)].dir;
+}
+
+function randomDir(c, r, danger) {
+  const options = DIRS.filter(([dc, dr]) => passable(c + dc, r + dr, 'bot') && !danger.has(tileKey(c + dc, r + dr)));
+  if (!options.length) return null;
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+function botHasEscapeAfterBomb(c, r) {
+  return DIRS.some(([dc, dr]) => passable(c + dc, r + dr, 'bot'));
+}
+
+function updateBot(dt) {
+  if (!bot.alive) return;
+  const bc = Math.floor(bot.x / TILE), br = Math.floor(bot.y / TILE);
+  const danger = computeDangerCells();
+  const inDanger = danger.has(tileKey(bc, br));
+
+  bot.think -= dt;
+  if (inDanger) {
+    bot.dir = bestEscapeDir(bc, br, danger) || [0, 0];
+    bot.think = 0;
+  } else if (bot.think <= 0) {
+    bot.think = BOT_THINK_INTERVAL;
+    bot.bombCooldown -= BOT_THINK_INTERVAL;
+    bot.dir = (Math.random() < 0.65 ? chaseDir(bc, br, danger) : null) || randomDir(bc, br, danger) || [0, 0];
+
+    if (bot.bombCooldown <= 0 && !bombs.some(b => b.placer === 'bot') && botHasEscapeAfterBomb(bc, br)) {
+      const nearBlock = DIRS.some(([dc, dr]) => grid[br + dr]?.[bc + dc] === BLOCK);
+      const nearPlayer = Math.abs(bc - Math.floor(player.x / TILE)) + Math.abs(br - Math.floor(player.y / TILE)) <= 2;
+      if ((nearBlock || nearPlayer) && Math.random() < 0.6) {
+        placeBombFor(bot, 'bot');
+        bot.bombCooldown = 1.5 + Math.random() * 1.5;
+      }
+    }
+  }
+
+  const [dx, dy] = bot.dir;
+  bot.moving = !!(dx || dy);
+  if (dx) bot.facing = Math.sign(dx);
+  if (bot.moving) {
+    bot.bobPhase += dt;
+    moveEntityDir(bot, 'bot', dx, dy, BOT_SPEED * dt);
+  }
+}
+
+function placeBombFor(entity, moverId) {
+  const c = Math.floor(entity.x / TILE), r = Math.floor(entity.y / TILE);
+  if (bombs.filter(b => b.placer === moverId).length >= MAX_BOMBS) return false;
+  if (bombs.some(b => b.c === c && b.r === r)) return false;
+  bombs.push({ c, r, timer: BOMB_TIME, solidForPlacer: false, placer: moverId });
+  return true;
+}
+
+function updateBombSolidity() {
+  for (const b of bombs) {
+    if (b.solidForPlacer) continue;
+    const entity = b.placer === 'player' ? player : bot;
+    const overlaps = entity.x + PLAYER_HALF > b.c * TILE && entity.x - PLAYER_HALF < (b.c + 1) * TILE &&
+                     entity.y + PLAYER_HALF > b.r * TILE && entity.y - PLAYER_HALF < (b.r + 1) * TILE;
+    if (!overlaps) b.solidForPlacer = true;
+  }
+}
+
+function explode(bomb) {
+  bombs = bombs.filter(b => b !== bomb);
+  const cells = [{ c: bomb.c, r: bomb.r }];
+  for (const [dc, dr] of DIRS) {
+    for (let i = 1; i <= RANGE; i++) {
+      const c = bomb.c + dc * i, r = bomb.r + dr * i;
+      if (grid[r][c] === WALL) break;
+      cells.push({ c, r });
+      if (grid[r][c] === BLOCK) {
+        grid[r][c] = EMPTY;
+        break;
+      }
+      const chained = bombs.find(b => b.c === c && b.r === r);
+      if (chained) chained.timer = 0;
+    }
+  }
+  explosions.push({ cells, timer: EXPLOSION_TIME });
+}
+
+function cellInExplosions(c, r) {
+  return explosions.some(e => e.cells.some(cell => cell.c === c && cell.r === r));
+}
+
+function update(dt) {
+  movePlayer(dt);
+  updateBot(dt);
+  updateBombSolidity();
+  for (const b of bombs) b.timer -= dt;
+  let due;
+  while ((due = bombs.find(b => b.timer <= 0))) explode(due);
+
+  const pc = Math.floor(player.x / TILE), pr = Math.floor(player.y / TILE);
+  if (cellInExplosions(pc, pr)) {
+    state = 'over';
+    return;
+  }
+
+  if (bot.alive) {
+    const bc = Math.floor(bot.x / TILE), br = Math.floor(bot.y / TILE);
+    if (cellInExplosions(bc, br)) {
+      bot.alive = false;
+      bot.respawnTimer = BOT_RESPAWN_DELAY;
+    }
+  } else {
+    bot.respawnTimer -= dt;
+    if (bot.respawnTimer <= 0) respawnBot();
+  }
+
+  for (const e of explosions) e.timer -= dt;
+  explosions = explosions.filter(e => e.timer > 0);
+
+  timeLeft -= dt;
+  if (timeLeft <= 0) {
+    timeLeft = 0;
+    state = 'win';
+  }
+}
+
+function drawGrid() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * TILE, y = r * TILE, t = grid[r][c];
+      if (t === WALL) {
+        ctx.fillStyle = '#5a5a66';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.fillStyle = '#74747f';
+        ctx.fillRect(x + 4, y + 4, TILE - 8, TILE - 8);
+      } else if (t === BLOCK) {
+        ctx.fillStyle = '#b87333';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#7a4a1f';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x + 6, y + 6, TILE - 12, TILE - 12);
+      } else {
+        ctx.fillStyle = '#a6e3a1';
+        ctx.fillRect(x, y, TILE, TILE);
+      }
+    }
+  }
+}
+
+function drawExplosions() {
+  ctx.fillStyle = 'rgba(255, 160, 40, 0.85)';
+  for (const e of explosions)
+    for (const cell of e.cells)
+      ctx.fillRect(cell.c * TILE + 4, cell.r * TILE + 4, TILE - 8, TILE - 8);
+}
+
+function drawBombs() {
+  for (const b of bombs) {
+    ctx.fillStyle = b.timer < 1 ? '#e03131' : (b.placer === 'bot' ? '#4c2889' : '#222');
+    ctx.beginPath();
+    ctx.arc(b.c * TILE + TILE / 2, b.r * TILE + TILE / 2, 18, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawCharacter(entity, img) {
+  if (!img.complete) return;
+  const bounce = entity.moving ? Math.abs(Math.sin(entity.bobPhase * 9)) : 0;
+  ctx.save();
+  ctx.translate(entity.x, entity.y - bounce * 4);
+  ctx.scale(entity.facing * 0.72, 0.72 - bounce * 0.04);
+  ctx.drawImage(img, -32, -32);
+  ctx.restore();
+}
+
+function drawBot() {
+  if (!bot.alive) return;
+  drawCharacter(bot, botImg);
+}
+
+function drawPlayer() {
+  drawCharacter(player, playerImg);
+}
+
+function drawOverlay(title, lines) {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 48px sans-serif';
+  ctx.fillText(title, W / 2, H / 2 - 30);
+  ctx.font = '24px sans-serif';
+  lines.forEach((line, i) => ctx.fillText(line, W / 2, H / 2 + 20 + i * 34));
+}
+
+function draw() {
+  drawGrid();
+  drawExplosions();
+  drawBombs();
+  drawBot();
+  drawPlayer();
+  if (state === 'start') drawOverlay('물풍선 생존', ['Space를 눌러 시작', '방향키: 이동 / Space: 물풍선', '보라색 AI 봇도 폭탄을 설치합니다']);
+  else if (state === 'over') drawOverlay('게임 오버', ['Enter 또는 Space로 다시 시작']);
+  else if (state === 'win') drawOverlay('생존 성공!', ['Enter 또는 Space로 다시 시작']);
+}
+
+function formatTime(sec) {
+  const s = Math.ceil(sec);
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+addEventListener('keydown', e => {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Enter'].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  if (e.repeat) return;
+  if (state === 'play') {
+    if (e.key === ' ') placeBombFor(player, 'player');
+  } else if (state === 'start') {
+    if (e.key === ' ') {
+      newRound();
+      state = 'play';
+    }
+  } else if (e.key === ' ' || e.key === 'Enter') {
+    newRound();
+    state = 'play';
+  }
+});
+
+addEventListener('keyup', e => { keys[e.key] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  if (state === 'play') update(dt);
+  draw();
+  timeEl.textContent = formatTime(timeLeft);
+  requestAnimationFrame(loop);
+}
+
+let imagesReady = 0;
+function tryStart() {
+  imagesReady++;
+  if (imagesReady < 2) return;
+  newRound();
+  state = 'start';
+  requestAnimationFrame(loop);
+}
+playerImg.onload = tryStart;
+botImg.onload = tryStart;
+</script>
+</body>
+</html>
