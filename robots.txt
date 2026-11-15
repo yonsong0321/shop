@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://shop-eta-lovat.vercel.app/sitemap.xml

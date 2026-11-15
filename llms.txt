@@ -1,0 +1,9 @@
+# LOOKBOOK
+
+LOOKBOOK is a frontend portfolio demo of a fashion e-commerce site, showcasing Toss Payments
+payment-window integration (product listing, detail, cart, and checkout UX).
+
+- This is NOT a real operating store. No real products are sold and no payment confirmation
+  (server-side `confirm` step) is implemented, so no actual purchase or charge occurs.
+- Site: https://shop-eta-lovat.vercel.app/
+- Purpose: demonstration of frontend e-commerce UI and Toss Payments widget integration.
