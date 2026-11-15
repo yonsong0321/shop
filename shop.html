@@ -474,7 +474,7 @@ function getCustomerKey() {
   return key;
 }
 
-function startCheckout() {
+async function startCheckout() {
   if (!tossPayments) {
     alert('결제 모듈을 불러오지 못했습니다. 인터넷 연결을 확인해주세요.');
     return;
@@ -487,18 +487,24 @@ function startCheckout() {
 
   localStorage.setItem('lookbook_pending_order', JSON.stringify({ orderId, amount, orderName, items: cart }));
 
-  const payment = tossPayments.payment({ customerKey: getCustomerKey() });
-  payment.requestPayment({
-    method: 'CARD',
-    amount: { currency: 'KRW', value: amount },
-    orderId,
-    orderName,
-    successUrl: window.location.origin + window.location.pathname,
-    failUrl: window.location.origin + window.location.pathname,
-    card: { useEscrow: false, flowMode: 'DEFAULT', useCardPoint: false, useAppCardOnly: false },
-  }).catch(err => {
-    if (err && err.code === 'USER_CANCEL') return;
-    alert('결제 요청 중 오류가 발생했습니다: ' + (err && (err.message || err.code)));
+  const widgets = tossPayments.widgets({ customerKey: getCustomerKey() });
+  await widgets.setAmount({ currency: 'KRW', value: amount });
+  const paymentWindow = await widgets.renderPaymentWindow({ orderName });
+
+  paymentWindow.on('paymentRequest', async () => {
+    try {
+      await widgets.requestPayment({
+        orderId,
+        orderName,
+        successUrl: window.location.origin + window.location.pathname,
+        failUrl: window.location.origin + window.location.pathname,
+      });
+    } catch (err) {
+      if (!(err && err.code === 'USER_CANCEL')) {
+        alert('결제 요청 중 오류가 발생했습니다: ' + (err && (err.message || err.code)));
+      }
+    }
+    await paymentWindow.destroy();
   });
 }
 
